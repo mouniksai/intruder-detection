@@ -79,40 +79,21 @@ This distinction must be baked in from the start — it affects dataset design, 
 
 Assign **one extractor per team member**. If your team is bigger than the core list below, add extractors from the "extended options" list; if smaller, combine two extractors per person or drop the least critical one. Each write-up should include: **theory summary, implementation, feature vector dimensionality, and results.**
 
-### Core options (pick as many as you have members for, in priority order)
+### Features Extraction
 
-| # | Feature Extractor | Core Idea | Library |
-|---|---|---|---|
-| 1 | **Eigenfaces (PCA)** | Project flattened pixels onto top-k principal components capturing max variance | `sklearn.decomposition.PCA` |
-| 2 | **Fisherfaces (LDA)** | Like PCA but supervised — maximizes between-class vs within-class scatter | `sklearn.discriminant_analysis.LinearDiscriminantAnalysis` |
-| 3 | **LBP (Local Binary Patterns)** | Per-pixel texture code from thresholded neighborhood comparisons, summarized as a histogram per region | `skimage.feature.local_binary_pattern` |
-| 4 | **HOG (Histogram of Oriented Gradients)** | Gradient orientation histograms over cells/blocks — captures edge/shape structure | `skimage.feature.hog` |
-| 5 | **Gabor filter bank** | Bank of orientation/frequency-selective filters convolved with the face, pooled per filter | `cv2.getGaborKernel` |
+| Member | Feature Extractor                               | **Actual Features Extracted (Examples)**                                                                                                                                                         | Why these features matter                                                                                                                                                                                        | Classifier    |
+| ------ | ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------- |
+| **1**  | **BSIF (Binarized Statistical Image Features)** | • Forehead skin texture<br>• Cheek texture<br>• Beard/stubble pattern<br>• Eyebrow texture<br>• Wrinkle patterns around eyes<br>• Lip texture                                                    | Learns statistically meaningful texture patterns from image patches using learned filters instead of handcrafted rules. These micro-texture patterns are distinctive between people. ([PubMed Central (PMC)][1]) | Random Forest |
+| **2**  | **LPQ (Local Phase Quantization)**              | • Phase pattern around eye corners<br>• Phase pattern of nostrils<br>• Phase transitions around lips<br>• Eyebrow phase structure<br>• Local phase around chin                                   | Encodes the **local Fourier phase** rather than intensity, making it robust to blur while preserving structural information in facial regions. ([PubMed Central (PMC)][2])                                       | XGBoost       |
+| **3**  | **Weber Local Descriptor (WLD)**                | • Relative brightness around eyes<br>• Contrast around nose bridge<br>• Lip-to-skin intensity change<br>• Eyebrow-to-forehead contrast<br>• Shadow transitions on cheeks                         | Measures **relative intensity changes** (contrast perceived by the human eye) rather than absolute brightness, making it more robust to illumination changes. ([IIETA][3])                                       | LightGBM      |
+| **4**  | **Gabor Wavelet Bank**                          | • Vertical wrinkles<br>• Horizontal forehead lines<br>• Diagonal eye-edge textures<br>• Nose ridge orientation<br>• Lip edge orientations<br>• Facial hair orientation                           | Extracts **orientation-specific frequency responses** at multiple scales, capturing line and ridge patterns in different directions, similar to processing in the human visual cortex. ([arXiv][4])              | RBF-SVM       |
+| **5**  | **MediaPipe Face Mesh (Geometric Features)**    | • Distance between eyes<br>• Nose width<br>• Nose length<br>• Mouth width<br>• Jaw width<br>• Face height<br>• Chin angle<br>• Eye aspect ratio<br>• Mouth aspect ratio<br>• Face symmetry score | Extracts the **shape and proportions** of the face rather than its appearance. These geometric measurements remain informative even when textures change. ([arXiv][4])                                           | MLP           |
 
-### Extended options (use if your team has more than 5 people, or want a substitute)
+[1]: https://pmc.ncbi.nlm.nih.gov/articles/PMC7865363/?utm_source=chatgpt.com "Multi-Block Color-Binarized Statistical Images for Single-Sample Face Recognition - PMC"
+[2]: https://pmc.ncbi.nlm.nih.gov/articles/PMC10011767/?utm_source=chatgpt.com "Statistical local descriptors for face recognition: a comprehensive study - PMC"
+[3]: https://www.iieta.org/journals/ria/paper/10.18280/ria.340501?utm_source=chatgpt.com "Novel Descriptors for Effective Recognition of Face and Facial Expressions | IIETA"
+[4]: https://arxiv.org/abs/0907.4984?utm_source=chatgpt.com "Automatic local Gabor Features extraction for face recognition"
 
-| # | Feature Extractor | Core Idea | Library |
-|---|---|---|---|
-| 6 | **SIFT/ORB + Bag-of-Visual-Words** | Detect scale/rotation-invariant keypoints, cluster descriptors into a visual vocabulary, represent each face as a histogram over that vocabulary | `cv2.SIFT_create` / `cv2.ORB_create` |
-| 7 | **Haar-like features (Viola-Jones style)** | Rectangular intensity-difference filters at multiple scales/positions, the same primitive used for face *detection*, repurposed here for recognition features | `cv2.CascadeClassifier` / custom |
-| 8 | **DCT / Wavelet transform features** | Frequency-domain decomposition (Discrete Cosine or Wavelet Transform), keep low-frequency coefficients as a compact descriptor | `scipy.fft`, `PyWavelets` |
-| 9 | **Color/intensity histogram + moments** | Global or block-wise pixel intensity statistics (mean, variance, skewness) — a simple baseline to contrast against texture/shape features | `numpy`, `scipy.stats` |
-| 10 | **Local Phase Quantization (LPQ)** | Texture descriptor robust to blur, based on quantized phase of local Fourier transforms | custom / `mahotas` |
-| 11 | **Zernike moments** | Shape descriptors invariant to rotation, computed from orthogonal Zernike polynomials over the face region | `mahotas.features.zernike_moments` |
-
-### For every extractor, each member should:
-- [ ] Feed the extracted vector into **the same classifier(s)** for a controlled comparison: **SVM (linear + RBF)**, **KNN**, optionally Random Forest / Logistic Regression
-- [ ] Run **k-fold cross-validation** — report mean ± std accuracy, not a single number
-- [ ] Report **precision, recall, F1, confusion matrix** per class — accuracy alone hides intruder-detection failures (e.g. 95% accuracy while every "unknown" is still misclassified as a known person)
-- [ ] Tune classifier hyperparameters with `GridSearchCV`
-- [ ] Implement **open-set thresholding**: if classifier confidence / nearest-neighbor distance exceeds a threshold, output "Unknown" instead of forcing a class. Tune the threshold on validation data and report an **ROC curve** for known-vs-unknown separation
-
-### Extra additions that raise the ceiling of Review 1
-- [ ] **Dimensionality reduction before classification** for high-dim features (HOG/Gabor can be thousands of dims) — apply PCA as a second stage, plot accuracy vs. #components
-- [ ] **Feature fusion** — concatenate 2–3 of the chosen features (e.g. HOG + LBP), show whether fusion beats any single feature. Ties the whole team's individual work into one shared experiment
-- [ ] **t-SNE/PCA 2D visualization** of each feature space colored by identity (`sklearn.manifold.TSNE`) — visually strong for the report/presentation, cheap to produce
-- [ ] **Robustness mini-study** — test each feature's accuracy under synthetic occlusion (black rectangle over eyes/mouth) or lighting shift
-- [ ] **Timing/efficiency comparison** — extraction time + classification time per feature, foreshadowing the real-time/deployment discussion in Review 2
 
 ---
 
