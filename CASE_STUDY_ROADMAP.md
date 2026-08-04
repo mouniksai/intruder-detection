@@ -30,7 +30,7 @@ This distinction must be baked in from the start — it affects dataset design, 
   /data/raw/<person_name>/*.jpg
   /data/processed/<person_name>/*.jpg      # after detection + alignment + resize
   /src/preprocessing/detect_align.py       # shared, written once
-  /src/features/{pca,lda,lbp,hog,gabor}.py # one file per person
+  /src/features/{bsif,lpq,wld,gabor,facemesh}.py # one file per person, classifier trained inside each
   /src/classifiers/train_eval.py           # shared evaluation harness
   /src/deep/                               # Review 2
   /notebooks/                              # exploration, plots
@@ -69,7 +69,7 @@ This distinction must be baked in from the start — it affects dataset design, 
 ## 3. Shared Preprocessing Pipeline (build once, everyone imports it)
 
 1. [ ] **Face detection** — OpenCV Haar cascade (`haarcascade_frontalface_default.xml`) for simplicity, or MTCNN (`mtcnn` package) for better accuracy. Worth a small side-comparison of both in the report.
-2. [ ] **Alignment** — detect eye landmarks (dlib 68-point or MTCNN 5-point), rotate so eyes are horizontal. This measurably boosts HOG/LBP/PCA performance since they're all sensitive to misalignment.
+2. [ ] **Alignment** — detect eye landmarks (dlib 68-point or MTCNN 5-point), rotate so eyes are horizontal. This measurably boosts the texture/phase-based descriptors (BSIF, LPQ, WLD, Gabor) since they're sensitive to misalignment; MediaPipe Face Mesh derives its own landmark geometry per face, so it's comparatively more tolerant.
 3. [ ] **Normalization** — crop to bounding box + margin, resize to a fixed size (e.g., 128×128), convert to grayscale for classical features (keep color for deep learning), apply CLAHE histogram equalization to reduce lighting variance.
 4. [ ] Save processed faces to `/data/processed/` so every feature-extractor script reads from the **same clean input** — required for a fair comparison across methods.
 
@@ -77,7 +77,9 @@ This distinction must be baked in from the start — it affects dataset design, 
 
 ## 4. Review 1 — Classical Feature Extraction + Classifiers
 
-Assign **one extractor per team member**. If your team is bigger than the core list below, add extractors from the "extended options" list; if smaller, combine two extractors per person or drop the least critical one. Each write-up should include: **theory summary, implementation, feature vector dimensionality, and results.**
+Assign **one feature+classifier pipeline per team member**, using the table below — each descriptor is deliberately paired with a classifier suited to its feature type (tree ensembles for the high-dimensional texture histograms, RBF-SVM for the Gabor bank, an MLP for the compact geometric vector), rather than testing every feature against one shared classifier. Each write-up should include: **theory summary, implementation, feature vector dimensionality, chosen classifier's hyperparameters, and results.**
+
+If your team is bigger than 5, extend the table using the same philosophy — pick another texture/phase/geometric descriptor (e.g. Local Ternary Patterns, POEM, SURF/ORB + Bag-of-Visual-Words, HOG, or classic PCA/LDA as a baseline) paired with a classifier not already used (e.g. CatBoost, Extra Trees, Naive Bayes, k-NN). If smaller, merge two rows onto one member, or drop the MediaPipe row last since it captures the most complementary (shape, not texture) information of the five.
 
 ### Features Extraction
 
@@ -94,6 +96,20 @@ Assign **one extractor per team member**. If your team is bigger than the core l
 [3]: https://www.iieta.org/journals/ria/paper/10.18280/ria.340501?utm_source=chatgpt.com "Novel Descriptors for Effective Recognition of Face and Facial Expressions | IIETA"
 [4]: https://arxiv.org/abs/0907.4984?utm_source=chatgpt.com "Automatic local Gabor Features extraction for face recognition"
 
+> **Implementation note:** BSIF, LPQ, and WLD don't have single mainstream pip packages the way PCA/HOG do — budget time to port a reference implementation from the cited papers, or use a smaller community package. `mediapipe` (Face Mesh), `scikit-learn`, `xgboost`, and `lightgbm` are all mainstream and just need adding to `requirements.txt`.
+
+### For every feature+classifier pipeline, each member should:
+- [ ] Run **k-fold cross-validation** — report mean ± std accuracy, not a single number
+- [ ] Report **precision, recall, F1, confusion matrix** per class — accuracy alone hides intruder-detection failures (e.g. 95% accuracy while every "unknown" is still misclassified as a known person)
+- [ ] Tune their own classifier's hyperparameters with `GridSearchCV`/`RandomizedSearchCV` (Random Forest: `n_estimators`/`max_depth`; XGBoost/LightGBM: `learning_rate`/`num_leaves`/`max_depth`; RBF-SVM: `C`/`gamma`; MLP: hidden layer sizes/activation/learning rate)
+- [ ] Implement **open-set thresholding** on top of their classifier's predicted probability/decision score — if confidence falls below a threshold, output "Unknown" instead of forcing a class. Tune the threshold on validation data and report an **ROC curve** for known-vs-unknown separation
+
+### Extra additions that raise the ceiling of Review 1
+- [ ] **Dimensionality reduction before classification** — BSIF/LPQ/WLD/Gabor histograms can run into thousands of bins; apply PCA as a second stage and plot accuracy vs. #components
+- [ ] **Feature fusion** — concatenate 2–3 of the five descriptors (e.g. BSIF + WLD, or all four texture descriptors + the MediaPipe geometric vector) and retrain one classifier on the combined vector; show whether fusion beats any single pipeline. Ties the whole team's individual work into one shared experiment
+- [ ] **t-SNE/PCA 2D visualization** of each feature space colored by identity (`sklearn.manifold.TSNE`) — visually strong for the report/presentation, cheap to produce
+- [ ] **Robustness mini-study** — test each feature+classifier pipeline's accuracy under synthetic occlusion (black rectangle over eyes/mouth) or lighting shift
+- [ ] **Timing/efficiency comparison** — extraction time + classifier inference time per pipeline, foreshadowing the real-time/deployment discussion in Review 2
 
 ---
 
@@ -101,7 +117,7 @@ Assign **one extractor per team member**. If your team is bigger than the core l
 
 ### 5.1 Two parallel tracks (deliberately mirrors Review 1's structure)
 1. [ ] **CNN from scratch** — small architecture (3–4 conv blocks + FC), trained directly on your face crops. Will likely *underperform* transfer learning given your small dataset — that gap itself is a good discussion point.
-2. [ ] **Transfer learning / pretrained embeddings** — use a pretrained face embedding network (FaceNet, ArcFace via `deepface` or `insightface`, or a pretrained ResNet/MobileNet backbone) to get a fixed-length embedding per face, then — exactly like Review 1 — feed it into a classifier (SVM/KNN) OR fine-tune the last few layers end-to-end.
+2. [ ] **Transfer learning / pretrained embeddings** — use a pretrained face embedding network (FaceNet, ArcFace via `deepface` or `insightface`, or a pretrained ResNet/MobileNet backbone) to get a fixed-length embedding per face, then — following the same feature-to-classifier pairing philosophy as Review 1 — feed it into a classifier suited to the embedding (e.g. RBF-SVM or an MLP) OR fine-tune the last few layers end-to-end.
 
 ### 5.2 Open-set recognition, properly
 - [ ] With embeddings, use **cosine/Euclidean distance to enrolled prototypes** (not softmax over fixed classes) — this is the actual production approach (how Face ID-style systems work), and supports adding/removing a person without retraining
@@ -133,16 +149,16 @@ Pick 3–5, not all — depth beats breadth:
 
 ## 7. Suggested Team Split (Review 1 → Review 2)
 
-Example mapping for a 5-person team — add or remove rows to match your actual headcount (pull extra Review 1 extractors from the extended list in Section 4, and split/merge Review 2 roles as needed):
+Example mapping for a 5-person team — add or remove rows to match your actual headcount (pull extra Review 1 descriptor+classifier pairs using the scaling guidance in Section 4, and split/merge Review 2 roles as needed):
 
-| Person | Review 1 | Review 2 |
+| Person | Review 1 (feature + classifier) | Review 2 |
 |---|---|---|
-| 1 | Eigenfaces | CNN-from-scratch |
-| 2 | Fisherfaces | Transfer learning / embeddings |
-| 3 | LBP | Open-set thresholding + FAR/FRR evaluation |
-| 4 | HOG | Grad-CAM / explainability + robustness testing |
-| 5 | Gabor | Alerting / dashboard / deployment layer (final live demo) |
-| 6+ | Pick from extended options (SIFT/ORB, Haar-like, DCT/Wavelet, color histogram, LPQ, Zernike moments) | Siamese/triplet-loss network, edge deployment, additional extra features from Section 6 |
+| 1 | BSIF + Random Forest | CNN-from-scratch |
+| 2 | LPQ + XGBoost | Transfer learning / embeddings |
+| 3 | Weber Local Descriptor (WLD) + LightGBM | Open-set thresholding + FAR/FRR evaluation |
+| 4 | Gabor Wavelet Bank + RBF-SVM | Grad-CAM / explainability + robustness testing |
+| 5 | MediaPipe Face Mesh (geometric) + MLP | Alerting / dashboard / deployment layer (final live demo) |
+| 6+ | Another descriptor+classifier pair (e.g. Local Ternary Patterns, POEM, SURF/ORB+BoVW, HOG, or classic PCA/LDA, paired with CatBoost/Extra Trees/Naive Bayes/k-NN) | Siamese/triplet-loss network, edge deployment, additional extra features from Section 6 |
 
 Build the shared preprocessing pipeline and evaluation harness together before splitting off — that's what makes every member's results directly comparable regardless of team size.
 
@@ -171,8 +187,8 @@ Build the shared preprocessing pipeline and evaluation harness together before s
 - [ ] Train/val/test + held-out unknown splits created
 - [ ] Augmentation pipeline written
 - [ ] Shared face detection + alignment + normalization pipeline built and applied to all data
-- [ ] One feature extractor implemented per team member (PCA, LDA, LBP, HOG, Gabor, or from the extended options list)
-- [ ] Shared classifier/evaluation harness (SVM/KNN/RF, CV, GridSearch, metrics, ROC) built
+- [ ] One feature+classifier pipeline implemented per team member (BSIF+Random Forest, LPQ+XGBoost, WLD+LightGBM, Gabor Wavelet Bank+RBF-SVM, MediaPipe Face Mesh+MLP, or additional pairs if the team is larger than 5)
+- [ ] Shared evaluation harness built (each member's own classifier — RF/XGBoost/LightGBM/RBF-SVM/MLP — plugged in via CV, hyperparameter search, metrics, ROC)
 - [ ] Open-set thresholding implemented and tuned
 - [ ] Feature fusion + t-SNE visualization + robustness study + timing comparison done
 - [ ] Review 1 report + presentation written
