@@ -59,7 +59,7 @@ class LPQExtractor:
         win_size: int = 7,
         freq_estimation_param: float = 1.0,
         grid_size: Tuple[int, int] = (4, 4),
-        decorrelate: bool = True
+        decorrelate: bool = False
     ) -> None:
         """
         Initialize the LPQ Extractor.
@@ -68,7 +68,7 @@ class LPQExtractor:
             win_size: Local window filter size (must be odd, e.g. 7).
             freq_estimation_param: Frequency parameter scalar (default: 1.0 -> a = 1/win_size).
             grid_size: Spatial grid division (rows, cols) for localized histograms.
-            decorrelate: Whether to apply whitening/decorrelation to frequency coefficients.
+            decorrelate: Whether to apply whitening/decorrelation to frequency coefficients (default: False for phase consistency).
         """
         if win_size % 2 == 0:
             raise ValueError("win_size must be an odd integer.")

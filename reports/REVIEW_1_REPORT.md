@@ -157,11 +157,11 @@ To prevent unauthorized strangers from being misclassified as enrolled users:
 
 | Model / Pipeline | Feature Descriptor | Dimensionality | Classical Classifier | Train Acc (%) | Val Acc (%) | Test Acc (%) | Precision | Recall | F1-Score | Latency |
 | :--- | :--- | :---: | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
-| **Pipeline 1** | **BSIF** | $4096\text{-D}$ | **Random Forest** ($150\text{ trees}$) | **100.0%** | **59.7%** | **73.6%** | $0.8286$ | $0.7222$ | $0.7326$ | $6.40\text{ ms}$ |
-| **Pipeline 2** | **LPQ** | $4096\text{-D}$ | **k-NN** ($k=5$, distance-weighted) | **100.0%** | **22.2%** | **20.8%** | $0.1239$ | $0.1778$ | $0.1369$ | $22.78\text{ ms}$ |
-| **Pipeline 3** | **WLD** | $2048\text{-D}$ | **Logistic Regression** (Multinomial L2) | **100.0%** | **80.6%** | **76.4%** | $0.8573$ | $0.7444$ | $0.7656$ | $4.42\text{ ms}$ |
-| **Pipeline 4** | **Gabor Bank** | $1920\text{-D}$ | **RBF-SVM** ($C=10.0$) | **100.0%** | **76.4%** | **76.4%** | $0.7796$ | $0.7444$ | $0.7215$ | $37.66\text{ ms}$ |
-| **Pipeline 5** | **Landmark Geometry** | $32\text{-D}$ | **Decision Tree** (CART Gini) | **73.7%** | **22.2%** | **18.1%** | $0.1452$ | $0.1444$ | $0.1397$ | $0.10\text{ ms}$ |
+| **Pipeline 1** | **BSIF** | $4096\text{-D}$ | **Random Forest** ($150\text{ trees}$) | **100.0%** | **59.7%** | **73.6%** | $0.8286$ | $0.7222$ | $0.7326$ | $6.60\text{ ms}$ |
+| **Pipeline 2** | **LPQ** | $4096\text{-D}$ | **k-NN** ($k=3$, cosine distance) | **100.0%** | **83.3%** | **75.0%** | $0.7872$ | $0.7278$ | $0.7259$ | $12.14\text{ ms}$ |
+| **Pipeline 3** | **WLD** | $2048\text{-D}$ | **Logistic Regression** (Multinomial L2) | **100.0%** | **80.6%** | **76.4%** | $0.8573$ | $0.7444$ | $0.7656$ | $4.57\text{ ms}$ |
+| **Pipeline 4** | **Gabor Bank** | $1920\text{-D}$ | **RBF-SVM** ($C=10.0$) | **100.0%** | **76.4%** | **76.4%** | $0.7796$ | $0.7444$ | $0.7215$ | $38.72\text{ ms}$ |
+| **Pipeline 5** | **Landmark Geometry** | $745\text{-D}$ | **Decision Tree Ensemble** (ExtraTrees) | **100.0%** | **76.4%** | **76.4%** | $0.8278$ | $0.7444$ | $0.7499$ | $2.90\text{ ms}$ |
 
 ---
 

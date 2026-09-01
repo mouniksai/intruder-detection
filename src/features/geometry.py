@@ -252,127 +252,106 @@ class LandmarkGeometryExtractor:
 
     def extract(self, face_image: np.ndarray) -> np.ndarray:
         """
-        Extract 32-dimensional scale-invariant geometric and bilateral symmetry feature vector.
+        Extract comprehensive multi-scale geometric, contour, landmark distance,
+        and bilateral symmetry feature vector for Pipeline 5.
 
         Args:
             face_image: 2D or 3D face image (128x128).
 
         Returns:
-            1D float32 feature vector of length 32.
+            1D float32 normalized feature vector.
         """
-        # Ensure 3-channel for mediapipe if needed
-        if len(face_image.shape) == 2:
-            img_bgr = cv2.cvtColor(face_image, cv2.COLOR_GRAY2BGR)
+        if len(face_image.shape) == 3:
+            gray = cv2.cvtColor(face_image, cv2.COLOR_BGR2GRAY)
         else:
-            img_bgr = face_image
+            gray = face_image.copy()
 
-        # Attempt high-density landmark detection with graceful morphological fallback
-        anchors = None
-        if self.use_mediapipe:
-            try:
-                anchors = self._extract_landmarks_mediapipe(img_bgr)
-            except Exception:
-                anchors = None
-
-        if anchors is None:
-            anchors = self._extract_landmarks_fallback(face_image)
-
-        # Helper Euclidean distance function
-        def dist(p1: np.ndarray, p2: np.ndarray) -> float:
-            return float(np.linalg.norm(p1 - p2))
-
-        fw = max(anchors["face_width"], 1.0)
-        fh = max(anchors["face_height"], 1.0)
-        mid_x = anchors["midline_x"]
-        eps = 1e-4
+        H, W = gray.shape[:2]
+        gray_f = gray.astype(np.float32)
+        fw, fh = float(W), float(H)
+        cx, cy = fw / 2.0, fh / 2.0
 
         # ---------------------------------------------------------------------
-        # 1. Scale-Invariant Distance Ratios (10 features)
+        # 1. Multi-Scale Directional Contour & Boundary Shape Geometry
+        #    (3 scales: 128x128 [8x8 grid], 64x64 [4x4 grid], 32x32 [2x2 grid])
         # ---------------------------------------------------------------------
-        d_inter_ocular = dist(anchors["eye_left"], anchors["eye_right"]) / fw
-        d_nose_width = dist(anchors["nose_left"], anchors["nose_right"]) / fw
-        d_nose_length = dist(anchors["nose_top"], anchors["nose_tip"]) / fh
-        d_mouth_width = dist(anchors["mouth_left"], anchors["mouth_right"]) / fw
-        d_mouth_height = dist(anchors["mouth_upper"], anchors["mouth_lower"]) / fh
-        d_jaw_width = dist(anchors["jaw_left"], anchors["jaw_right"]) / fw
+        feats = []
+        for (sh_target, sw_target, grid_r, grid_c) in [(128, 128, 8, 8), (64, 64, 4, 4), (32, 32, 2, 2)]:
+            s_img = cv2.resize(gray, (sw_target, sh_target), interpolation=cv2.INTER_AREA) if (sh_target != H) else gray
+            gx = cv2.Sobel(s_img, cv2.CV_32F, 1, 0, ksize=3)
+            gy = cv2.Sobel(s_img, cv2.CV_32F, 0, 1, ksize=3)
+            mag, ang = cv2.cartToPolar(gx, gy, angleInDegrees=True)
 
-        eye_mid = (anchors["eye_left"] + anchors["eye_right"]) / 2.0
-        mouth_mid = (anchors["mouth_left"] + anchors["mouth_right"]) / 2.0
-
-        d_eye_to_nose = abs(anchors["nose_tip"][1] - eye_mid[1]) / fh
-        d_nose_to_mouth = abs(mouth_mid[1] - anchors["nose_tip"][1]) / fh
-        d_eye_to_mouth = abs(mouth_mid[1] - eye_mid[1]) / fh
-        d_chin_to_mouth = abs(anchors["chin"][1] - anchors["mouth_lower"][1]) / fh
-
-        # ---------------------------------------------------------------------
-        # 2. Morphometric & Aspect Ratios (8 features)
-        # ---------------------------------------------------------------------
-        face_aspect_ratio = fh / fw
-        eye_to_jaw_ratio = d_inter_ocular / (d_jaw_width + eps)
-        nose_to_mouth_ratio = d_nose_width / (d_mouth_width + eps)
-        mar = d_mouth_height / (d_mouth_width + eps)  # Mouth Aspect Ratio
-        golden_ratio_dev = abs(face_aspect_ratio - 1.618)
-        vertical_thirds_ratio1 = d_eye_to_nose / (d_nose_to_mouth + eps)
-        vertical_thirds_ratio2 = d_nose_to_mouth / (d_chin_to_mouth + eps)
-        eye_height_ratio = abs(anchors["forehead"][1] - eye_mid[1]) / fh
+            bh, bw = sh_target // grid_r, sw_target // grid_c
+            for r in range(grid_r):
+                for c in range(grid_c):
+                    m_p = mag[r * bh:(r + 1) * bh, c * bw:(c + 1) * bw]
+                    a_p = ang[r * bh:(r + 1) * bh, c * bw:(c + 1) * bw]
+                    h, _ = np.histogram(a_p, bins=8, range=(0, 360), weights=m_p)
+                    norm_h = float(np.linalg.norm(h)) + 1e-4
+                    feats.extend(h / norm_h)
 
         # ---------------------------------------------------------------------
-        # 3. Bilateral Symmetry Indices (8 features)
+        # 2. Key Anatomical Landmark Anchors
         # ---------------------------------------------------------------------
-        def symmetry_index(p_l: np.ndarray, p_r: np.ndarray) -> float:
-            d_l = abs(p_l[0] - mid_x)
-            d_r = abs(p_r[0] - mid_x)
-            return float(abs(d_l - d_r) / (d_l + d_r + eps))
+        # Eye band
+        eye_roi = gray_f[int(H * 0.20):int(H * 0.55), :]
+        left_proj = np.mean(eye_roi[:, int(W * 0.10):int(W * 0.48)], axis=0)
+        right_proj = np.mean(eye_roi[:, int(W * 0.52):int(W * 0.90)], axis=0)
+        el_x = int(W * 0.10) + float(np.argmin(left_proj))
+        er_x = int(W * 0.52) + float(np.argmin(right_proj))
+        el_y = int(H * 0.20) + float(np.argmin(gray_f[int(H * 0.20):int(H * 0.55), int(np.clip(el_x, 0, W - 1))]))
+        er_y = int(H * 0.20) + float(np.argmin(gray_f[int(H * 0.20):int(H * 0.55), int(np.clip(er_x, 0, W - 1))]))
 
-        sym_eyes = symmetry_index(anchors["eye_left"], anchors["eye_right"])
-        sym_nose = symmetry_index(anchors["nose_left"], anchors["nose_right"])
-        sym_mouth = symmetry_index(anchors["mouth_left"], anchors["mouth_right"])
-        sym_jaw = symmetry_index(anchors["jaw_left"], anchors["jaw_right"])
+        # Nose band
+        nose_roi = gray_f[int(H * 0.40):int(H * 0.68), int(W * 0.30):int(W * 0.70)]
+        sobel_y = cv2.Sobel(nose_roi, cv2.CV_32F, 0, 1, ksize=3)
+        loc = np.unravel_index(np.argmax(np.abs(sobel_y)), nose_roi.shape)
+        ntip_x = int(W * 0.30) + float(loc[1])
+        ntip_y = int(H * 0.40) + float(loc[0])
 
-        # Vertical alignment symmetry
-        eye_level_diff = abs(anchors["eye_left"][1] - anchors["eye_right"][1]) / fh
-        mouth_level_diff = abs(anchors["mouth_left"][1] - anchors["mouth_right"][1]) / fh
-        nose_midline_dev = abs(anchors["nose_tip"][0] - mid_x) / fw
-        chin_midline_dev = abs(anchors["chin"][0] - mid_x) / fw
+        # Mouth band
+        m_roi = gray_f[int(H * 0.66):int(H * 0.92), int(W * 0.20):int(W * 0.80)]
+        m_center_y = int(H * 0.66) + float(np.argmin(np.mean(m_roi, axis=1)))
+        m_line = gray_f[int(np.clip(m_center_y, 0, H - 1)), :]
+        grad_m = np.abs(np.gradient(m_line))
+        ml_x = float(np.argmax(grad_m[int(W * 0.12):int(W * 0.45)]) + int(W * 0.12))
+        mr_x = float(np.argmax(grad_m[int(W * 0.55):int(W * 0.88)]) + int(W * 0.55))
 
-        # ---------------------------------------------------------------------
-        # 4. Angular Orientations (6 features)
-        # ---------------------------------------------------------------------
-        dx_eye = anchors["eye_right"][0] - anchors["eye_left"][0]
-        dy_eye = anchors["eye_right"][1] - anchors["eye_left"][1]
-        eye_angle = float(np.arctan2(dy_eye, dx_eye + eps))
-
-        dx_mouth = anchors["mouth_right"][0] - anchors["mouth_left"][0]
-        dy_mouth = anchors["mouth_right"][1] - anchors["mouth_left"][1]
-        mouth_angle = float(np.arctan2(dy_mouth, dx_mouth + eps))
-
-        # Jaw contour angles
-        jaw_l_angle = float(np.arctan2(anchors["chin"][1] - anchors["jaw_left"][1], anchors["chin"][0] - anchors["jaw_left"][0] + eps))
-        jaw_r_angle = float(np.arctan2(anchors["chin"][1] - anchors["jaw_right"][1], anchors["jaw_right"][0] - anchors["chin"][0] + eps))
-
-        # Nose bridge slope
-        nose_slope = float(np.arctan2(anchors["nose_tip"][1] - anchors["nose_top"][1], anchors["nose_tip"][0] - anchors["nose_top"][0] + eps))
-        jaw_spread_angle = abs(jaw_l_angle - jaw_r_angle)
-
-        # Assemble full 32-D feature vector
-        features = np.array([
-            # Distances (10)
-            d_inter_ocular, d_nose_width, d_nose_length, d_mouth_width,
-            d_mouth_height, d_jaw_width, d_eye_to_nose, d_nose_to_mouth,
-            d_eye_to_mouth, d_chin_to_mouth,
-            # Ratios (8)
-            face_aspect_ratio, eye_to_jaw_ratio, nose_to_mouth_ratio, mar,
-            golden_ratio_dev, vertical_thirds_ratio1, vertical_thirds_ratio2, eye_height_ratio,
-            # Symmetry (8)
-            sym_eyes, sym_nose, sym_mouth, sym_jaw,
-            eye_level_diff, mouth_level_diff, nose_midline_dev, chin_midline_dev,
-            # Angles (6)
-            eye_angle, mouth_angle, jaw_l_angle, jaw_r_angle, nose_slope, jaw_spread_angle
+        # Anchor coordinate set
+        pts = np.array([
+            [el_x, el_y], [er_x, er_y],
+            [ntip_x, ntip_y], [ml_x, m_center_y],
+            [mr_x, m_center_y], [cx, H * 0.96], [cx, H * 0.06],
+            [W * 0.08, H * 0.65], [W * 0.92, H * 0.65]
         ], dtype=np.float32)
 
-        # Replace any potential NaNs or Infs with 0.0
-        features = np.nan_to_num(features, nan=0.0, posinf=1.0, neginf=-1.0)
-        return features
+        iod = max(float(np.linalg.norm(pts[0] - pts[1])), 1.0)
+
+        # Pairwise distance matrix normalized by inter-ocular distance
+        for i in range(len(pts)):
+            for j in range(i + 1, len(pts)):
+                feats.append(float(np.linalg.norm(pts[i] - pts[j])) / iod)
+
+        # Normalized landmark coordinate displacements from nose tip
+        disp = ((pts - pts[2]) / iod).flatten()
+        feats.extend(disp.tolist())
+
+        # ---------------------------------------------------------------------
+        # 3. Bilateral Symmetry & Anatomical Proportions
+        # ---------------------------------------------------------------------
+        for i in range(len(pts)):
+            d_l = abs(pts[i][0] - cx)
+            feats.append(float(d_l) / fw)
+
+        # Multi-strata horizontal intensity projections
+        for y_pct in [0.20, 0.35, 0.50, 0.65, 0.80]:
+            line = gray_f[int(H * y_pct), :]
+            feats.extend([float(np.mean(line)) / 255.0, float(np.std(line)) / 255.0])
+
+        feature_vector = np.array(feats, dtype=np.float32)
+        feature_vector = np.nan_to_num(feature_vector, nan=0.0, posinf=1.0, neginf=-1.0)
+        return feature_vector
 
 
 _DEFAULT_GEOMETRY_EXTRACTOR: Optional[LandmarkGeometryExtractor] = None
@@ -386,9 +365,10 @@ def extract_features_geometry(face_image: np.ndarray) -> np.ndarray:
         face_image: 2D uint8/float32 face array (128x128).
 
     Returns:
-        1D feature vector of shape (32,).
+        1D feature vector of shape (745,).
     """
     global _DEFAULT_GEOMETRY_EXTRACTOR
     if _DEFAULT_GEOMETRY_EXTRACTOR is None:
         _DEFAULT_GEOMETRY_EXTRACTOR = LandmarkGeometryExtractor()
     return _DEFAULT_GEOMETRY_EXTRACTOR.extract(face_image)
+

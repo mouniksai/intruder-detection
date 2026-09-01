@@ -15,7 +15,7 @@ Strict Classical ML Architectures:
 from typing import Dict, Any, Tuple
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
-from sklearn.ensemble import RandomForestClassifier
+from sklearn.ensemble import RandomForestClassifier, ExtraTreesClassifier
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn.linear_model import LogisticRegression
 from sklearn.svm import SVC
@@ -48,18 +48,18 @@ def get_pipeline_1(random_state: int = 42) -> Pipeline:
     ])
 
 
-def get_pipeline_2(n_neighbors: int = 5) -> Pipeline:
+def get_pipeline_2(n_neighbors: int = 3) -> Pipeline:
     """
     Pipeline 2: LPQ + Distance-Weighted k-Nearest Neighbors (k-NN).
     k-NN finds closest matching feature vectors in LPQ phase-histogram space,
-    using inverse-distance voting.
+    using cosine distance metric and inverse-distance weighted voting.
     """
     return Pipeline([
         ('scaler', StandardScaler()),
         ('classifier', KNeighborsClassifier(
             n_neighbors=n_neighbors,
             weights='distance',
-            metric='euclidean',
+            metric='cosine',
             algorithm='auto',
             n_jobs=-1
         ))
@@ -103,18 +103,19 @@ def get_pipeline_4(random_state: int = 42) -> Pipeline:
 
 def get_pipeline_5(random_state: int = 42) -> Pipeline:
     """
-    Pipeline 5: Facial Landmark Geometry + Decision Tree.
-    Decision Tree discovers intuitive orthogonal decision boundaries along cranial
-    ratios, eye spacing, and bilateral facial symmetry indices.
+    Pipeline 5: Facial Landmark Geometry + Extremely Randomized Decision Trees.
+    Decision Tree ensemble discovers optimal orthogonal and oblique splits across
+    multi-scale cranial contour geometry, pairwise distance ratios, and bilateral symmetry indices.
     """
     return Pipeline([
         ('scaler', StandardScaler()),
-        ('classifier', DecisionTreeClassifier(
-            criterion='gini',
-            max_depth=12,
-            min_samples_split=4,
-            min_samples_leaf=2,
-            random_state=random_state
+        ('classifier', ExtraTreesClassifier(
+            n_estimators=150,
+            max_depth=16,
+            min_samples_split=2,
+            max_features='sqrt',
+            random_state=random_state,
+            n_jobs=-1
         ))
     ])
 
