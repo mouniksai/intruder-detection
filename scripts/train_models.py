@@ -83,8 +83,8 @@ def train_and_save_models(
     print(f"  - Total Dataset:  {len(X):>4} faces across {len(all_classes)} distinct classes: {all_classes}")
     print("  ---------------------------------------------------------------------------")
 
-    # Step 3: Train and Evaluate all 5 Independent Classical ML Pipelines
-    print("\n[Step 3/5] Training & Evaluating 5 Independent Classical ML Pipelines...")
+    # Step 3: Train and Evaluate all 25 Classical ML Experiments (5 Features x 5 Classifiers)
+    print("\n[Step 3/5] Training & Evaluating 25 Classical ML Experiments (5 Features x 5 Classifiers)...")
     evaluator = Review1Evaluator()
     summary_df, detailed_results = evaluator.run_all_benchmarks(
         X_train_img=X_train,
@@ -96,29 +96,45 @@ def train_and_save_models(
         y_val=y_val
     )
 
-    print("\n" + "=" * 95)
-    print("                         MODEL PERFORMANCE BENCHMARK SUMMARY")
-    print("=" * 95)
-    print(summary_df.to_string(index=False))
-    print("=" * 95)
+    tuple_keys = [k for k in detailed_results.keys() if isinstance(k, tuple)]
+    number_of_experiments = len(tuple_keys)
+    unique_features = len(set(k[0] for k in tuple_keys))
+    unique_classifiers = len(set(k[1] for k in tuple_keys))
 
-    # Step 4: Display Confusion Matrices for Training and Testing for each Model
-    print("\n[Step 4/5] Confusion Matrices across Training and Testing for each of the 5 Models:")
-    print("=" * 95)
-    for p_id in range(1, 6):
-        res = detailed_results[p_id]
-        print(f"\n--- {res['pipeline_name']} ---")
+    assert number_of_experiments == 25, f"Expected exactly 25 experiments, got {number_of_experiments}"
+    assert unique_features == 5, f"Expected 5 features, got {unique_features}"
+    assert unique_classifiers == 5, f"Expected 5 classifiers, got {unique_classifiers}"
+
+    print("\n" + "=" * 105)
+    print("                25 FEATURE-CLASSIFIER EXPERIMENTS PERFORMANCE BENCHMARK SUMMARY (5x5)")
+    print("=" * 105)
+    print(summary_df.to_string(index=False))
+    print("=" * 105)
+
+    # Step 4: Display Confusion Matrices for Top / Canonical Experiments
+    print("\n[Step 4/5] Confusion Matrices across Training and Testing for Canonical Configurations:")
+    print("=" * 105)
+    canonical_pairs = [
+        ("BSIF", "Random Forest"),
+        ("LPQ", "KNN"),
+        ("WLD", "Logistic Regression"),
+        ("Gabor", "SVM"),
+        ("Geometry", "Decision Tree")
+    ]
+    for (f_name, clf_name) in canonical_pairs:
+        res = detailed_results[(f_name, clf_name)]
+        print(f"\n--- {f_name} + {clf_name} ---")
         print(f"  Train Accuracy: {res['train_accuracy']*100:.2f}% | Val Accuracy: {res['val_accuracy']*100:.2f}% | Test Accuracy: {res['test_accuracy']*100:.2f}%")
         
         # Test Confusion Matrix DataFrame
         test_cm_df = pd.DataFrame(res["test_confusion_matrix"], index=[f"True_{c}" for c in all_classes], columns=[f"Pred_{c}" for c in all_classes])
-        print("\n  [TEST CONFUSION MATRIX (Unseen Test Set)]:")
+        print(f"\n  [TEST CONFUSION MATRIX ({f_name} + {clf_name})]:")
         print(test_cm_df.to_string())
 
     # Step 5: Compute Centroid Templates and Gating Thresholds for Enrolled Identities
     print("\n\n[Step 5/5] Computing feature templates and distance thresholds for enrolled identities...")
-    enrolled_templates: Dict[str, Dict[int, np.ndarray]] = {}
-    template_thresholds: Dict[str, Dict[int, float]] = {}
+    enrolled_templates: Dict[str, Dict[Any, np.ndarray]] = {}
+    template_thresholds: Dict[str, Dict[Any, float]] = {}
 
     for person in enrolled_classes:
         enrolled_templates[person] = {}
@@ -164,7 +180,6 @@ def train_and_save_models(
         "min_consensus_votes": 2,
         "summary_df": summary_df,
         "detailed_results": detailed_results,
-        # Save test pool for random testing
         "test_images": X_test,
         "test_labels": y_test,
         "val_images": X_val,
@@ -177,8 +192,14 @@ def train_and_save_models(
     print(f"\n  -> Successfully serialized trained models & test datasets to: {full_save_path}")
     print(f"\n[Ready] Run 'python scripts/classify_image.py --random' or 'python scripts/classify_image.py <image_path>' to classify images!")
 
+    # Required summary printout
+    print(f"\nTotal experiments: {number_of_experiments}")
+    print(f"Features: {unique_features}")
+    print(f"Classifiers: {unique_classifiers}")
+
     return saved_payload
 
 
 if __name__ == "__main__":
     train_and_save_models()
+

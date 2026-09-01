@@ -12,7 +12,7 @@ Strict Classical ML Architectures:
 - Pipeline 5: Landmark Geometry  -> StandardScaler + DecisionTreeClassifier (CART Rule-Based Splitting)
 """
 
-from typing import Dict, Any, Tuple
+from typing import Dict, Any, Tuple, Callable
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 from sklearn.ensemble import RandomForestClassifier, ExtraTreesClassifier
@@ -28,12 +28,12 @@ from ..features.gabor import extract_features_gabor
 from ..features.geometry import extract_features_geometry
 
 
-def get_pipeline_1(random_state: int = 42) -> Pipeline:
-    """
-    Pipeline 1: BSIF + Random Forest Classifier.
-    Random Forest leverages an ensemble of bagging decision trees to effectively classify
-    high-dimensional statistical histogram representations.
-    """
+# =============================================================================
+# 5 STANDALONE CLASSIFIER FACTORIES
+# =============================================================================
+
+def get_classifier_rf(random_state: int = 42) -> Pipeline:
+    """Classifier 1: Random Forest Classifier (Tree Ensemble)."""
     return Pipeline([
         ('scaler', StandardScaler()),
         ('classifier', RandomForestClassifier(
@@ -48,12 +48,8 @@ def get_pipeline_1(random_state: int = 42) -> Pipeline:
     ])
 
 
-def get_pipeline_2(n_neighbors: int = 3) -> Pipeline:
-    """
-    Pipeline 2: LPQ + Distance-Weighted k-Nearest Neighbors (k-NN).
-    k-NN finds closest matching feature vectors in LPQ phase-histogram space,
-    using cosine distance metric and inverse-distance weighted voting.
-    """
+def get_classifier_knn(n_neighbors: int = 3) -> Pipeline:
+    """Classifier 2: Distance-Weighted k-Nearest Neighbors (k-NN)."""
     return Pipeline([
         ('scaler', StandardScaler()),
         ('classifier', KNeighborsClassifier(
@@ -66,12 +62,8 @@ def get_pipeline_2(n_neighbors: int = 3) -> Pipeline:
     ])
 
 
-def get_pipeline_3(random_state: int = 42) -> Pipeline:
-    """
-    Pipeline 3: WLD + Multinomial Logistic Regression.
-    Logistic Regression optimizes log-odds boundaries across relative-contrast histograms
-    with L2 ridge regularization.
-    """
+def get_classifier_lr(random_state: int = 42) -> Pipeline:
+    """Classifier 3: Multinomial Logistic Regression (L2 Regularized)."""
     return Pipeline([
         ('scaler', StandardScaler()),
         ('classifier', LogisticRegression(
@@ -83,12 +75,8 @@ def get_pipeline_3(random_state: int = 42) -> Pipeline:
     ])
 
 
-def get_pipeline_4(random_state: int = 42) -> Pipeline:
-    """
-    Pipeline 4: Gabor Wavelet Bank + RBF-SVM.
-    Radial Basis Function Support Vector Machine projects Gabor orientation/scale
-    energy statistics into an infinite-dimensional RKHS with maximum margin separation.
-    """
+def get_classifier_svm(random_state: int = 42) -> Pipeline:
+    """Classifier 4: RBF Kernel Support Vector Machine (RBF-SVM)."""
     return Pipeline([
         ('scaler', StandardScaler()),
         ('classifier', SVC(
@@ -101,12 +89,8 @@ def get_pipeline_4(random_state: int = 42) -> Pipeline:
     ])
 
 
-def get_pipeline_5(random_state: int = 42) -> Pipeline:
-    """
-    Pipeline 5: Facial Landmark Geometry + Extremely Randomized Decision Trees.
-    Decision Tree ensemble discovers optimal orthogonal and oblique splits across
-    multi-scale cranial contour geometry, pairwise distance ratios, and bilateral symmetry indices.
-    """
+def get_classifier_dt(random_state: int = 42) -> Pipeline:
+    """Classifier 5: Decision Tree Classifier / ExtraTrees."""
     return Pipeline([
         ('scaler', StandardScaler()),
         ('classifier', ExtraTreesClassifier(
@@ -120,7 +104,13 @@ def get_pipeline_5(random_state: int = 42) -> Pipeline:
     ])
 
 
-# Aliases for backward compatibility
+# Aliases for 1-to-1 canonical pipelines
+get_pipeline_1 = get_classifier_rf
+get_pipeline_2 = get_classifier_knn
+get_pipeline_3 = get_classifier_lr
+get_pipeline_4 = get_classifier_svm
+get_pipeline_5 = get_classifier_dt
+
 get_member_1_pipeline = get_pipeline_1
 get_member_2_pipeline = get_pipeline_2
 get_member_3_pipeline = get_pipeline_3
@@ -128,7 +118,83 @@ get_member_4_pipeline = get_pipeline_4
 get_member_5_pipeline = get_pipeline_5
 
 
-# Registry mapping pipeline IDs to extractor functions and model pipelines
+# =============================================================================
+# 1-TO-N REGISTRIES: 5 FEATURES x 5 CLASSIFIERS = 25 EXPERIMENTS
+# =============================================================================
+
+FEATURE_EXTRACTORS: Dict[str, Dict[str, Any]] = {
+    "BSIF": {
+        "id": 1,
+        "name": "BSIF",
+        "extractor_func": extract_features_bsif,
+        "description": "Binarized Statistical Image Features"
+    },
+    "LPQ": {
+        "id": 2,
+        "name": "LPQ",
+        "extractor_func": extract_features_lpq,
+        "description": "Local Phase Quantization"
+    },
+    "WLD": {
+        "id": 3,
+        "name": "WLD",
+        "extractor_func": extract_features_wld,
+        "description": "Weber Local Descriptor"
+    },
+    "Gabor": {
+        "id": 4,
+        "name": "Gabor",
+        "extractor_func": extract_features_gabor,
+        "description": "40-Filter Gabor Wavelet Bank"
+    },
+    "Geometry": {
+        "id": 5,
+        "name": "Geometry",
+        "extractor_func": extract_features_geometry,
+        "description": "Facial Landmark & Contour Geometry"
+    }
+}
+
+CLASSIFIER_FACTORIES: Dict[str, Dict[str, Any]] = {
+    "Random Forest": {
+        "id": 1,
+        "name": "Random Forest",
+        "short_name": "RF",
+        "factory": get_classifier_rf,
+        "description": "Random Forest (150 Trees)"
+    },
+    "KNN": {
+        "id": 2,
+        "name": "KNN",
+        "short_name": "KNN",
+        "factory": get_classifier_knn,
+        "description": "Distance-Weighted k-Nearest Neighbors"
+    },
+    "Logistic Regression": {
+        "id": 3,
+        "name": "Logistic Regression",
+        "short_name": "LR",
+        "factory": get_classifier_lr,
+        "description": "Multinomial Logistic Regression (L2)"
+    },
+    "SVM": {
+        "id": 4,
+        "name": "SVM",
+        "short_name": "SVM",
+        "factory": get_classifier_svm,
+        "description": "RBF-Kernel Support Vector Machine"
+    },
+    "Decision Tree": {
+        "id": 5,
+        "name": "Decision Tree",
+        "short_name": "DT",
+        "factory": get_classifier_dt,
+        "description": "Decision Tree Ensemble (ExtraTrees)"
+    }
+}
+
+
+# Canonical 1-to-1 pipeline configs for backward compatibility
 PIPELINE_CONFIGS: Dict[int, Dict[str, Any]] = {
     1: {
         "pipeline_id": 1,
@@ -147,7 +213,7 @@ PIPELINE_CONFIGS: Dict[int, Dict[str, Any]] = {
         "pipeline_name": "Pipeline 2 (LPQ + k-NN)",
         "member_name": "LPQ + k-NN",
         "feature_name": "LPQ",
-        "classifier_name": "k-NN",
+        "classifier_name": "KNN",
         "extractor_func": extract_features_lpq,
         "pipeline_factory": get_pipeline_2,
         "description": "Local Phase Quantization + Distance-Weighted Nearest Neighbors"
@@ -168,8 +234,8 @@ PIPELINE_CONFIGS: Dict[int, Dict[str, Any]] = {
         "model_name": "Gabor + RBF-SVM",
         "pipeline_name": "Pipeline 4 (Gabor + RBF-SVM)",
         "member_name": "Gabor + RBF-SVM",
-        "feature_name": "Gabor Wavelets",
-        "classifier_name": "RBF-SVM",
+        "feature_name": "Gabor",
+        "classifier_name": "SVM",
         "extractor_func": extract_features_gabor,
         "pipeline_factory": get_pipeline_4,
         "description": "40-Filter Gabor Wavelet Bank + RBF Kernel SVM"
@@ -179,10 +245,11 @@ PIPELINE_CONFIGS: Dict[int, Dict[str, Any]] = {
         "model_name": "Geometry + Decision Tree",
         "pipeline_name": "Pipeline 5 (Geometry + Decision Tree)",
         "member_name": "Geometry + Decision Tree",
-        "feature_name": "Landmark Geometry",
+        "feature_name": "Geometry",
         "classifier_name": "Decision Tree",
         "extractor_func": extract_features_geometry,
         "pipeline_factory": get_pipeline_5,
-        "description": "32-D Cranial Landmark Geometry + CART Decision Tree"
+        "description": "Facial Landmark & Contour Geometry + Decision Tree"
     }
 }
+
