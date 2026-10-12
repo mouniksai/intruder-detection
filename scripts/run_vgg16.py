@@ -45,11 +45,12 @@ from src.models.common import (
 
 
 def run_vgg16(
-    epochs: int = 15,
+    epochs: int = 10,
     batch_size: int = 16,
-    lr: float = 5e-4,
+    lr: float = 2e-4,
     device_name: str = "cpu",
-    output_dir: str = "reports/figures"
+    output_dir: str = "reports/figures",
+    test_only: bool = False
 ):
     print("=" * 80)
     print("  ARCHITECTURE 2: VGG-16 (2014) — Deep Homogeneous 3x3 Stacking (VGGFace)")
@@ -72,7 +73,7 @@ def run_vgg16(
             random_seed=42
         )
 
-    # 2. Stratified Partitioning
+    # 2. Stratified Partitioning across every enrolled face
     splits = mgr.split_known_and_unknowns(
         X, y, unknown_labels=["unknown", "intruder"], test_size=0.15, val_size=0.15, random_state=42
     )
@@ -93,7 +94,7 @@ def run_vgg16(
     print(f"[*] Train Faces: {len(X_train)} | Val Faces: {len(X_val)} | Test Faces: {len(X_test)} | Unknown Intruders: {len(X_unknown)}")
 
     # 3. Model Initialization & Architecture Profiling
-    model = VGG16Face(num_classes=num_classes, embedding_dim=512)
+    model = VGG16Face(num_classes=num_classes, embedding_dim=512, pretrained=True)
     total_params, trainable_params = count_parameters(model)
     model_size_mb = compute_model_size_mb(model)
 
@@ -104,14 +105,26 @@ def run_vgg16(
     print(f"  • Model Size (FP32):   {model_size_mb:.2f} MB")
     print(f"  • Key Structure:       Cascaded 3x3 Convolutions + MaxPool + BatchNorm")
 
-    # 4. Training
+    # 4. Checkpoint path
+    checkpoint_dir = os.path.join(WORKSPACE_ROOT, "models")
+    os.makedirs(checkpoint_dir, exist_ok=True)
+    checkpoint_path = os.path.join(checkpoint_dir, "vgg16_face.pth")
+
     train_dataset = DeepFaceDataset(X_train, y_train_idx, target_size=(128, 128), is_training=True, augment=True)
     val_dataset = DeepFaceDataset(X_val, y_val_idx, target_size=(128, 128), is_training=False, augment=False)
     test_dataset = DeepFaceDataset(X_test, y_test_idx, target_size=(128, 128), is_training=False, augment=False)
     intruder_dataset = DeepFaceDataset(X_unknown, [0]*len(X_unknown), target_size=(128, 128), is_training=False, augment=False)
 
-    print(f"\n[*] Training VGG-16 for {epochs} epochs...")
-    train_model(model, train_dataset, val_dataset, num_epochs=epochs, batch_size=batch_size, lr=lr, device=device)
+    if test_only and os.path.exists(checkpoint_path):
+        print(f"\n[*] [TEST-ONLY MODE] Loading pre-trained checkpoint: {checkpoint_path}")
+        ckpt = torch.load(checkpoint_path, map_location=device, weights_only=False)
+        model.load_state_dict(ckpt["model_state"])
+        model.to(device)
+    else:
+        print(f"\n[*] Training VGG-16 for {epochs} epochs...")
+        train_model(model, train_dataset, val_dataset, num_epochs=epochs, batch_size=batch_size, lr=lr, device=device)
+        torch.save({"model_state": model.state_dict(), "class_names": known_classes}, checkpoint_path)
+        print(f"[*] Checkpoint saved to: {checkpoint_path}")
 
     # 5. Closed-Set Testing
     print("\n[*] Evaluating Closed-Set Test Performance...")
@@ -159,8 +172,8 @@ def run_vgg16(
     print("    1. Homogeneous stacks of small 3x3 filters preserve high-frequency facial micro-textures")
     print("       and progressively synthesize anatomical landmarks (eyes, nose, lip curves) across 13")
     print("       convolutional layers, yielding highly discriminative feature representations (VGGFace foundation).")
-    print("    2. However, the high layer depth and large parameter size (~15M-138M) introduce high computational")
-    print("       latency (~30-50ms), making it impractical for lightweight edge CCTV hardware.")
+    print("    2. However, the high layer depth and large parameter size (~32M) introduce high computational")
+    print("       latency (~30-55ms), making it impractical for lightweight edge CCTV hardware.")
     print("=" * 80)
 
     return {
@@ -183,10 +196,17 @@ def run_vgg16(
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Run VGG-16 face recognition benchmark")
-    parser.add_argument("--epochs", type=int, default=15, help="Number of training epochs")
+    parser.add_argument("--epochs", type=int, default=10, help="Number of training epochs")
     parser.add_argument("--batch-size", type=int, default=16, help="Batch size")
-    parser.add_argument("--lr", type=float, default=5e-4, help="Learning rate")
+    parser.add_argument("--lr", type=float, default=2e-4, help="Learning rate")
     parser.add_argument("--device", type=str, default="cpu", help="Device (cpu or cuda)")
+    parser.add_argument("--test-only", action="store_true", help="Evaluate existing checkpoint without retraining")
     args = parser.parse_args()
 
-    run_vgg16(epochs=args.epochs, batch_size=args.batch_size, lr=args.lr, device_name=args.device)
+    run_vgg16(
+        epochs=args.epochs,
+        batch_size=args.batch_size,
+        lr=args.lr,
+        device_name=args.device,
+        test_only=args.test_only
+    )

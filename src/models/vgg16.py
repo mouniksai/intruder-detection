@@ -22,29 +22,45 @@ class VGG16Face(nn.Module):
     and open-set embedding extraction.
     """
 
-    def __init__(self, num_classes: int = 5, embedding_dim: int = 512, in_channels: int = 3) -> None:
+    def __init__(self, num_classes: int = 5, embedding_dim: int = 512, in_channels: int = 3, pretrained: bool = True) -> None:
         super().__init__()
         self.num_classes = num_classes
         self.embedding_dim = embedding_dim
 
-        # Configuration for VGG-16: 'M' = MaxPool2d
-        cfg = [64, 64, 'M', 128, 128, 'M', 256, 256, 256, 'M', 512, 512, 512, 'M', 512, 512, 512, 'M']
-        self.features = self._make_layers(cfg, in_channels=in_channels)
-
-        self.avgpool = nn.AdaptiveAvgPool2d((4, 4))
-
-        # Fully Connected Layers
-        self.classifier_block = nn.Sequential(
-            nn.Dropout(p=0.5),
-            nn.Linear(512 * 4 * 4, 2048),
-            nn.ReLU(inplace=True),
-            nn.Dropout(p=0.5),
-            nn.Linear(2048, embedding_dim),
-            nn.ReLU(inplace=True),
-        )
-
-        self.head = nn.Linear(embedding_dim, num_classes)
-        self._init_weights()
+        if pretrained:
+            import torchvision.models as tv
+            backbone = tv.vgg16_bn(weights=tv.VGG16_BN_Weights.DEFAULT)
+            self.features = backbone.features
+            self.avgpool = nn.AdaptiveAvgPool2d((4, 4))
+            self.classifier_block = nn.Sequential(
+                nn.Dropout(p=0.5),
+                nn.Linear(512 * 4 * 4, 2048),
+                nn.ReLU(inplace=True),
+                nn.Dropout(p=0.5),
+                nn.Linear(2048, embedding_dim),
+                nn.ReLU(inplace=True),
+            )
+            self.head = nn.Linear(embedding_dim, num_classes)
+            for m in [self.classifier_block, self.head]:
+                for mod in m.modules():
+                    if isinstance(mod, nn.Linear):
+                        nn.init.normal_(mod.weight, 0, 0.01)
+                        nn.init.constant_(mod.bias, 0)
+        else:
+            # Configuration for VGG-16: 'M' = MaxPool2d
+            cfg = [64, 64, 'M', 128, 128, 'M', 256, 256, 256, 'M', 512, 512, 512, 'M', 512, 512, 512, 'M']
+            self.features = self._make_layers(cfg, in_channels=in_channels)
+            self.avgpool = nn.AdaptiveAvgPool2d((4, 4))
+            self.classifier_block = nn.Sequential(
+                nn.Dropout(p=0.5),
+                nn.Linear(512 * 4 * 4, 2048),
+                nn.ReLU(inplace=True),
+                nn.Dropout(p=0.5),
+                nn.Linear(2048, embedding_dim),
+                nn.ReLU(inplace=True),
+            )
+            self.head = nn.Linear(embedding_dim, num_classes)
+            self._init_weights()
 
     def _make_layers(self, cfg, in_channels: int = 3) -> nn.Sequential:
         layers = []

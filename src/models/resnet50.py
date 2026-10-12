@@ -76,7 +76,7 @@ class ResNet50Face(nn.Module):
     and open-set prototype verification.
     """
 
-    def __init__(self, num_classes: int = 5, embedding_dim: int = 512, in_channels: int = 3) -> None:
+    def __init__(self, num_classes: int = 5, embedding_dim: int = 512, in_channels: int = 3, pretrained: bool = True) -> None:
         super().__init__()
         self.in_planes = 64
         self.num_classes = num_classes
@@ -102,7 +102,24 @@ class ResNet50Face(nn.Module):
         self.bn_embedding = nn.BatchNorm1d(embedding_dim)
         self.classifier = nn.Linear(embedding_dim, num_classes)
 
-        self._init_weights()
+        if pretrained:
+            import torchvision.models as tv
+            backbone = tv.resnet50(weights=tv.ResNet50_Weights.DEFAULT)
+            self.stem[0].weight.data.copy_(backbone.conv1.weight.data)
+            self.stem[1].weight.data.copy_(backbone.bn1.weight.data)
+            self.stem[1].bias.data.copy_(backbone.bn1.bias.data)
+            self.layer1.load_state_dict(backbone.layer1.state_dict())
+            self.layer2.load_state_dict(backbone.layer2.state_dict())
+            self.layer3.load_state_dict(backbone.layer3.state_dict())
+            self.layer4.load_state_dict(backbone.layer4.state_dict())
+            nn.init.normal_(self.fc_embedding.weight, 0, 0.01)
+            nn.init.constant_(self.fc_embedding.bias, 0)
+            nn.init.constant_(self.bn_embedding.weight, 1)
+            nn.init.constant_(self.bn_embedding.bias, 0)
+            nn.init.normal_(self.classifier.weight, 0, 0.01)
+            nn.init.constant_(self.classifier.bias, 0)
+        else:
+            self._init_weights()
 
     def _make_layer(self, planes: int, num_blocks: int, stride: int) -> nn.Sequential:
         downsample = None

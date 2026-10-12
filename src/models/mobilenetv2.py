@@ -63,57 +63,71 @@ class MobileNetV2Face(nn.Module):
     MobileNetV2 tailored for biometric face recognition and edge intruder gating.
     """
 
-    def __init__(self, num_classes: int = 5, embedding_dim: int = 512, in_channels: int = 3, width_mult: float = 1.0) -> None:
+    def __init__(self, num_classes: int = 5, embedding_dim: int = 512, in_channels: int = 3, width_mult: float = 1.0, pretrained: bool = True) -> None:
         super().__init__()
         self.num_classes = num_classes
         self.embedding_dim = embedding_dim
 
-        # Inverted residual setting: [t, c, n, s]
-        # t: expansion factor, c: output channels, n: repeat count, s: stride
-        inverted_residual_setting = [
-            [1, 16, 1, 1],
-            [6, 24, 2, 2],
-            [6, 32, 3, 2],
-            [6, 64, 4, 2],
-            [6, 96, 3, 1],
-            [6, 160, 3, 2],
-            [6, 320, 1, 1],
-        ]
+        if pretrained:
+            import torchvision.models as tv
+            backbone = tv.mobilenet_v2(weights=tv.MobileNet_V2_Weights.DEFAULT)
+            self.features = backbone.features
+            last_channel = 1280
+            self.gap = nn.AdaptiveAvgPool2d((1, 1))
+            self.dropout = nn.Dropout(p=0.2)
+            self.fc_embedding = nn.Linear(last_channel, embedding_dim)
+            self.classifier = nn.Linear(embedding_dim, num_classes)
+            nn.init.normal_(self.fc_embedding.weight, 0, 0.01)
+            nn.init.zeros_(self.fc_embedding.bias)
+            nn.init.normal_(self.classifier.weight, 0, 0.01)
+            nn.init.zeros_(self.classifier.bias)
+        else:
+            # Inverted residual setting: [t, c, n, s]
+            # t: expansion factor, c: output channels, n: repeat count, s: stride
+            inverted_residual_setting = [
+                [1, 16, 1, 1],
+                [6, 24, 2, 2],
+                [6, 32, 3, 2],
+                [6, 64, 4, 2],
+                [6, 96, 3, 1],
+                [6, 160, 3, 2],
+                [6, 320, 1, 1],
+            ]
 
-        # Initial stem
-        first_channel = int(32 * width_mult)
-        features: List[nn.Module] = [
-            nn.Conv2d(in_channels, first_channel, kernel_size=3, stride=2, padding=1, bias=False),
-            nn.BatchNorm2d(first_channel),
-            nn.ReLU6(inplace=True),
-        ]
+            # Initial stem
+            first_channel = int(32 * width_mult)
+            features: List[nn.Module] = [
+                nn.Conv2d(in_channels, first_channel, kernel_size=3, stride=2, padding=1, bias=False),
+                nn.BatchNorm2d(first_channel),
+                nn.ReLU6(inplace=True),
+            ]
 
-        # Build Inverted Residual blocks
-        in_c = first_channel
-        for t, c, n, s in inverted_residual_setting:
-            out_c = int(c * width_mult)
-            for i in range(n):
-                stride = s if i == 0 else 1
-                features.append(InvertedResidual(in_c, out_c, stride=stride, expand_ratio=t))
-                in_c = out_c
+            # Build Inverted Residual blocks
+            in_c = first_channel
+            for t, c, n, s in inverted_residual_setting:
+                out_c = int(c * width_mult)
+                for i in range(n):
+                    stride = s if i == 0 else 1
+                    features.append(InvertedResidual(in_c, out_c, stride=stride, expand_ratio=t))
+                    in_c = out_c
 
-        # Last 1x1 stage
-        last_channel = int(1280 * width_mult) if width_mult > 1.0 else 1280
-        features.extend([
-            nn.Conv2d(in_c, last_channel, kernel_size=1, bias=False),
-            nn.BatchNorm2d(last_channel),
-            nn.ReLU6(inplace=True),
-        ])
+            # Last 1x1 stage
+            last_channel = int(1280 * width_mult) if width_mult > 1.0 else 1280
+            features.extend([
+                nn.Conv2d(in_c, last_channel, kernel_size=1, bias=False),
+                nn.BatchNorm2d(last_channel),
+                nn.ReLU6(inplace=True),
+            ])
 
-        self.features = nn.Sequential(*features)
+            self.features = nn.Sequential(*features)
 
-        # Global Average Pooling & Biometric Head
-        self.gap = nn.AdaptiveAvgPool2d((1, 1))
-        self.dropout = nn.Dropout(p=0.2)
-        self.fc_embedding = nn.Linear(last_channel, embedding_dim)
-        self.classifier = nn.Linear(embedding_dim, num_classes)
+            # Global Average Pooling & Biometric Head
+            self.gap = nn.AdaptiveAvgPool2d((1, 1))
+            self.dropout = nn.Dropout(p=0.2)
+            self.fc_embedding = nn.Linear(last_channel, embedding_dim)
+            self.classifier = nn.Linear(embedding_dim, num_classes)
 
-        self._init_weights()
+            self._init_weights()
 
     def _init_weights(self) -> None:
         for m in self.modules():
