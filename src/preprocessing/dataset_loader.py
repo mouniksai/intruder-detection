@@ -12,7 +12,7 @@ Handles:
    orientation, noise, and identity-specific geometric/texture signatures for instant reproducible testing.
 """
 
-from typing import Tuple, List, Dict, Optional, Union
+from typing import Tuple, List, Dict, Optional, Union, Any
 import os
 import glob
 from pathlib import Path

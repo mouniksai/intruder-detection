@@ -123,6 +123,43 @@ python scripts/classify_image.py --random
 
 ---
 
+## 🧠 Review 2: Deep Learning Architecture Suite & Open-Set Intruder Rejection
+
+Review 2 transitions from classical handcrafted feature extraction to deep convolutional architectures. All 5 architectures are implemented and evaluated as **independent, standalone pipelines**:
+
+| Architecture | Paradigm | Params | Footprint | Test Acc | Open-Set ROC-AUC | Imposter Rejection | Latency | Role |
+| :--- | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :--- |
+| **AlexNet** | 11x11 Large-Kernel Baseline | 42.3M | 161.5 MB | 20.0% | 0.740 | 54.0% | 29.1 ms | Mandatory Baseline |
+| **VGG-16** | Deep 3x3 Homogeneous Cascade | 32.5M | 124.2 MB | **100.0%** | 0.900 | 72.0% | 57.3 ms | Mandatory (VGGFace) |
+| **GoogLeNet** | Multi-Scale Inception + GAP | 6.8M | 25.9 MB | 95.0% | 0.826 | 46.0% | 19.8 ms | Mandatory (FaceNet) |
+| **ResNet-50** | Residual Identity Highway | 24.6M | 93.7 MB | **100.0%** | **0.908** | **84.0%** | 35.5 ms | **Selected #1 (ArcFace SOTA)** |
+| **MobileNetV2** | Inverted Residuals + Linear Bottlenecks | **2.9M** | **11.0 MB** | 61.7% | 0.746 | 69.0% | **12.0 ms** | **Selected #2 (Edge CCTV)** |
+
+### Run Each Architecture Separately:
+```bash
+# Test AlexNet individually
+python scripts/run_alexnet.py
+
+# Test VGG-16 individually
+python scripts/run_vgg16.py
+
+# Test GoogLeNet individually
+python scripts/run_googlenet.py
+
+# Test ResNet-50 individually
+python scripts/run_resnet50.py
+
+# Test MobileNetV2 individually
+python scripts/run_mobilenetv2.py
+
+# Run all 5 architectures benchmark suite
+python scripts/run_all_architectures.py
+```
+
+*For comprehensive theoretical justifications and viva presentation Q&A, refer to [`reports/REVIEW_2_DEMO_EXPLANATION.md`](reports/REVIEW_2_DEMO_EXPLANATION.md).*
+
+---
+
 ## 📂 Repository Organization
 
 ```
@@ -130,31 +167,31 @@ intruder-detection/
 ├── requirements.txt                   # Core Python dependencies
 ├── README.md                          # Project overview & instructions
 ├── data/raw/                          # Input subject image folders
-├── models/review1_models.joblib       # Serialized models & enrolled templates
+├── models/review1_models.joblib       # Serialized Review 1 models
 ├── src/
-│   ├── preprocessing/
-│   │   ├── detect_align.py            # Face detection, eye alignment & CLAHE
-│   │   └── dataset_loader.py          # Dataset discovery & 3-way partitioner
-│   ├── features/
-│   │   ├── bsif.py                    # BSIF extractor (4096-D)
-│   │   ├── lpq.py                     # LPQ extractor (4096-D)
-│   │   ├── wld.py                     # WLD extractor (2048-D)
-│   │   ├── gabor.py                   # Gabor Wavelet Bank extractor (1920-D)
-│   │   └── geometry.py                # Landmark & Contour Geometry (745-D)
-│   ├── classifiers/
-│   │   ├── pipelines.py               # 5 classifier factories & registries
-│   │   └── train_eval.py              # 1-to-N (25 experiments) evaluation engine
-│   └── open_set/
-│       └── intruder_detector.py       # Template distance gating & consensus fusion
+│   ├── models/                        # Review 2 Deep Learning Architecture Suite
+│   │   ├── alexnet.py                 # AlexNet (8 layers, 11x11 convs, 42M params)
+│   │   ├── vgg16.py                   # VGG-16 (16 layers, 3x3 cascades, 32M params)
+│   │   ├── googlenet.py               # GoogLeNet / Inception-v1 (22 layers, 6.8M params)
+│   │   ├── resnet50.py                # ResNet-50 (50 layers, residual bottlenecks)
+│   │   ├── mobilenetv2.py             # MobileNetV2 (53 layers, depthwise separable)
+│   │   └── common.py                  # OpenSetGatingEngine, prototype cosine gating, transforms
+│   ├── preprocessing/                 # Face detection, eye alignment & CLAHE
+│   ├── features/                      # Review 1 extractors (BSIF, LPQ, WLD, Gabor, Geometry)
+│   ├── classifiers/                   # Review 1 classical classifiers (RF, KNN, LR, SVM, DT)
+│   └── open_set/                      # Consensus fusion engine
 ├── scripts/
-│   ├── train_models.py                # 25-experiment training & serialization
-│   ├── classify_image.py              # Single-image inference CLI
-│   └── run_review1_benchmarks.py      # End-to-end benchmark & plotting runner
+│   ├── run_alexnet.py                 # Standalone AlexNet pipeline
+│   ├── run_vgg16.py                   # Standalone VGG-16 pipeline
+│   ├── run_googlenet.py               # Standalone GoogLeNet pipeline
+│   ├── run_resnet50.py                # Standalone ResNet-50 pipeline
+│   ├── run_mobilenetv2.py             # Standalone MobileNetV2 pipeline
+│   ├── run_all_architectures.py       # Master Review 2 comparative benchmark
+│   ├── generate_review2_visuals.py    # Generates Review 2 summary figures
+│   └── run_review1_benchmarks.py      # Review 1 25-experiment benchmark
 └── reports/
-    ├── REVIEW_1_REPORT.md             # Full academic review documentation
-    ├── BENCHMARK_RESULTS.md           # 25-experiment markdown table
-    └── figures/
-        ├── confusion_matrices_test.png       # 5x5 test confusion matrix grid
-        ├── benchmark_25_matrix.png           # 5x5 test accuracy heatmap matrix
-        └── classification_result.jpg         # Annotated visual inference output
+    ├── REVIEW_1_REPORT.md             # Review 1 comprehensive report
+    ├── REVIEW_2_DEEP_LEARNING_SELECTION.md # Review 2 architecture selection & theory
+    ├── REVIEW_2_DEMO_EXPLANATION.md   # Review 2 Demo explanation & viva justification
+    └── figures/                       # Confusion matrices, ROC curves, and bar plots
 ```

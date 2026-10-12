@@ -1,6 +1,6 @@
-datasets/
-models/
-data/
+/datasets/
+/models/
+/data/
 __pycache__/
 # Byte-compiled / optimized / DLL files
 __pycache__/
